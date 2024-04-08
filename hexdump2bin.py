@@ -20,7 +20,9 @@ def is_hexstr(val):
     x_bytes:    X方向のバイト数
     y_bytes:    Y方向のバイト数
 '''
-def print_hexdump(data, offset=0, adr=0, x_bytes=16, y_bytes=16):
+def print_hexdump(data, offset=0, adr=0):
+    x_bytes = 16
+    y_bytes = 16
     print('Add  ', end='')
     for x in range(x_bytes):
         print('+{:X}'.format(x), end=' ')
@@ -37,7 +39,6 @@ def print_hexdump(data, offset=0, adr=0, x_bytes=16, y_bytes=16):
         print('{:02X}'.format(x_sum & 0xff))
         y_sum[x_bytes] += x_sum
         adr += x_bytes
-    #print('-' * (8 + 3 * x_bytes))
     print('Sum ', end=' ')
     for x in range(x_bytes):
         print('{:02X}'.format(y_sum[x] & 0xff), end=' ')
@@ -71,39 +72,78 @@ def print_hexdump(data, offset=0, adr=0, x_bytes=16, y_bytes=16):
         Sum  EA 6F 0D D2 94 BD BF 5D 4C 4D 24 37 BD 83 54 6B 98
 '''
 def read_dumptext(file):
-    base_adr = 0
+    IsBaseAdr = True
+    base_adr  = 0
+    block_adr = 0
     data = []
     x_bytes = 16
+    y_bytes = 16
     y_sum  = [0] * x_bytes
     xy_sum = 0
+    yyy = 0
     with open(file, 'r') as f:
         for line in f:
-            token_list = [token.upper() for token in line.split()]
-            if len(token_list) != x_bytes + 2:
+            token_list = line.split()
+            #token_list = [token.upper() for token in line.split()]
+            if len(token_list) == 0:
                 continue
-            elif token_list[0] == 'ADD':
+            elif len(token_list) != x_bytes + 2:
+                print('Tokenize error:')
+                print(token_list)
+                sys.exit()
                 continue
-            elif token_list[0] == 'SUM':
+            elif token_list[0].upper() == 'ADD':
+                yyy = 0
+                continue
+            elif token_list[0].upper() == 'SUM':
+                if yyy != y_bytes:
+                    print("Block address : 0x{:X}".format(block_adr))
+                    print("Number of data lines is {}. It should be {}.".format(yyy, y_bytes))
+                    sys.exit()
+                # トークンの中身が16進数かチェック
+                for x in range(1, x_bytes + 2):
+                    if is_hexstr(token_list[x]) == False:
+                        print("Block address : 0x{:X}".format(block_adr))
+                        if x == x_bytes + 1:
+                            print("Invalid Checksum : ", token_list[x])
+                        else:
+                            print("Invalid data : +{:X} {}".format(x - 1, token_list[x]))
+                        print(token_list)
+                        sys.exit()
                 # Y方向のチェックサム確認
                 for x in range(x_bytes):
                     if (y_sum[x] & 0xff) != int(token_list[x + 1], base=16):
+                        print("Block address : 0x{:X}".format(block_adr))
                         print('Y  Checksum error : +{:X} {:02X} should be {}'.format(x, y_sum[x] & 0xff, token_list[x + 1]))
+                        print(token_list)
+                        sys.exit()
                 # 総チェックサムの確認
                 if (xy_sum & 0xff) != int(token_list[x_bytes + 1], base=16):
+                    print("Block address : 0x{:X}".format(block_adr))
                     print('XY Checksum error : {:02X} should be {}'.format(xy_sum & 0xff, token_list[x_bytes + 1]))
                 # チェックサムのリセット
                 y_sum  = [0] * x_bytes
                 xy_sum = 0
+                yyy = 0
             else:
                 # トークンの中身が16進数かチェック
-                for x in range(x_bytes + 1):
+                for x in range(x_bytes + 2):
                     if is_hexstr(token_list[x]) == False:
-                        print("Not Hexadecial : index={} data={}".format(x, token_list[x]))
+                        if x == 0:
+                            print("Invalid address : ", token_list[x])
+                        elif x == x_bytes + 1:
+                            print("Invalid Checksum : ", token_list[x])
+                        else:
+                            print("Invalid data : +{:X} {}".format(x - 1, token_list[x]))
                         print(token_list)
                         sys.exit()
                 # 先頭アドレスの保存
-                if base_adr == 0:
+                if IsBaseAdr == True:
+                    IsBaseAdr = False
                     base_adr = int(token_list[0], base=16)
+                # ブロックアドレスの保存
+                if yyy == 0:
+                    block_adr = int(token_list[0], base=16)
                 # 1行分のバイナリ変換
                 x_sum = 0
                 for x in range(x_bytes):
@@ -116,8 +156,9 @@ def read_dumptext(file):
                     print("X  Checksum error : ", token_list)
                 # 総チェックサム計算
                 xy_sum += x_sum
+                # Y方向のカウント
+                yyy += 1
     return data, base_adr
-
 
 
 if __name__ == "__main__":
@@ -142,6 +183,6 @@ if __name__ == "__main__":
 
     # --dump
     if args.dump == True:
-        print('Data size=', size)
         for offset in range(0, size, 256):
-            print_hexdump(data, offset, adr = base_adr + offset)
+            print_hexdump(data, offset, adr = base_adr)
+        print('Data size=0x{:X}'.format(size))
