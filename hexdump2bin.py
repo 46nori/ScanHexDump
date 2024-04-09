@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import argparse
 
 '''
@@ -81,21 +82,21 @@ def read_dumptext(file):
     y_sum  = [0] * x_bytes
     xy_sum = 0
     yyy = 0
-    with open(file, 'r') as f:
+    with open(file, 'r', newline='') as f:
         for line in f:
-            token_list = line.split()
-            #token_list = [token.upper() for token in line.split()]
+            # 改行削除し、スペースまたは':'でトークン分割後、大文字変換
+            token_list = [token.upper() for token in 
+                          list(filter(None, re.split('[ :]', line.strip('\n'))))]
+
             if len(token_list) == 0:
+                # 空行を検出(skip)
                 continue
-            elif len(token_list) != x_bytes + 2:
-                print('Tokenize error:')
-                print(token_list)
-                sys.exit()
-                continue
-            elif token_list[0].upper() == 'ADD':
+            elif 'ADD' in token_list[0] or '+' in token_list[0]:
+                # 先頭のトークンに'ADD'または'+'が含まれる行(skip)を検出
                 yyy = 0
                 continue
-            elif token_list[0].upper() == 'SUM':
+            elif token_list[0] == 'SUM':
+                # チェックサム行を検出
                 if yyy != y_bytes:
                     print("Block address : 0x{:X}".format(block_adr))
                     print("Number of data lines is {}. It should be {}.".format(yyy, y_bytes))
@@ -125,7 +126,14 @@ def read_dumptext(file):
                 y_sum  = [0] * x_bytes
                 xy_sum = 0
                 yyy = 0
+            elif len(token_list) != x_bytes + 2:
+                # データ行っぽいが期待するトークンと異なる行を検出
+                print('Tokenize error: line=', yyy)
+                print(token_list)
+                sys.exit()
+                continue
             else:
+                # フォーマットが正しいデータ行を検出
                 # トークンの中身が16進数かチェック
                 for x in range(x_bytes + 2):
                     if is_hexstr(token_list[x]) == False:
