@@ -18,18 +18,19 @@ def is_hexstr(val):
     data:       データのリスト
     offset:     表示開始位置の先頭からのバイト数
     adr:        表示アドレス
-    x_bytes:    X方向のバイト数
-    y_bytes:    Y方向のバイト数
 '''
 def print_hexdump(data, offset=0, adr=0):
-    x_bytes = 16
-    y_bytes = 16
+    x_bytes = 16    # X方向のバイト数
+    y_bytes = 16    # Y方向のバイト数
+    y_max = int(len(data) / x_bytes)
     print('Add  ', end='')
     for x in range(x_bytes):
         print('+{:X}'.format(x), end=' ')
     print('Sum')
     y_sum = [0] * (x_bytes + 1)
     for y in range(y_bytes):
+        if (y + 1) * x_bytes + offset > len(data):
+            break
         x_sum = 0
         print('{:04X}'.format(adr), end=' ')
         for x in range(x_bytes):
@@ -50,9 +51,9 @@ def print_hexdump(data, offset=0, adr=0):
 バイナリ変換
     file:   テキストファイル
 
-    以下のフォーマットのテキストファイルを読んで、バイナリのリストとベースアドレスを返す。
+    以下のフォーマットのテキストファイルを読んで、バイナリのリストと先頭アドレスを返す。
     チェックサムの計算も行い、一致しない場合はエラーを表示する。
-    1ブロック分のフォーマット:
+    1ブロック分のフォーマット例:
         Add  +0 +1 +2 +3 +4 +5 +6 +7 +8 +9 +A +B +C +D +E +F Sum
         0100 30 17 0E 2D 35 01 4E 4F 4C 3B 11 3B 13 09 07 2E 79
         0110 25 3F 4B 56 04 10 60 1A 29 1E 2B 1F 5E 53 60 18 4D
@@ -72,7 +73,7 @@ def print_hexdump(data, offset=0, adr=0):
         01F0 24 04 51 2F 43 30 62 14 28 1C 47 4A 27 0D 4D 3C 23
         Sum  EA 6F 0D D2 94 BD BF 5D 4C 4D 24 37 BD 83 54 6B 98
 '''
-def read_dumptext(file):
+def read_dumptext(file, isAutoCorrect):
     IsBaseAdr = True
     base_adr  = 0
     block_adr = 0
@@ -86,7 +87,7 @@ def read_dumptext(file):
         for line in f:
             # 改行削除し、スペースまたは':'でトークン分割後、大文字変換
             token_list = [token.upper() for token in 
-                          list(filter(None, re.split('[ :]', line.strip('\n'))))]
+                          list(filter(None, re.split('[ :.-]', line.strip('\n'))))]
 
             if len(token_list) == 0:
                 # 空行を検出(skip)
@@ -136,6 +137,10 @@ def read_dumptext(file):
                 # フォーマットが正しいデータ行を検出
                 # トークンの中身が16進数かチェック
                 for x in range(x_bytes + 2):
+                    # 16進文字の自動修正を試みる
+                    if isAutoCorrect:
+                        token_list[x] = auto_correct(token_list[x])
+                    # 16進文字列かチェック
                     if is_hexstr(token_list[x]) == False:
                         if x == 0:
                             print("Invalid address : ", token_list[x])
@@ -168,12 +173,23 @@ def read_dumptext(file):
                 yyy += 1
     return data, base_adr
 
+'''
+文字の自動修正
+'''
+def auto_correct(s):
+    return s.translate(str.maketrans({'I':'1',
+                                      'L':'1',
+                                      'O':'0',
+                                      'S':'5',
+                                      'T':'7'}))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='16進ダンプコンバータ')
-    parser.add_argument('in_file',          help='入力テキストファイル名')
-    parser.add_argument('-o', '--out_file', help='バイナリ出力ファイル名')
-    parser.add_argument('-d', '--dump',     help='16進ダンプ出力', action='store_true')
+    parser.add_argument('in_file',              help='入力テキストファイル名')
+    parser.add_argument('-o', '--out_file',     help='バイナリ出力ファイル名')
+    parser.add_argument('-d', '--dump',         help='16進ダンプ出力', action='store_true')
+    parser.add_argument('-a', '--auto_correct', help='文字の自動修正', action='store_true')
     args = parser.parse_args()
 
     # in_file
@@ -181,7 +197,7 @@ if __name__ == "__main__":
         print('File not found:', args.in_file)
         sys.exit()
     else:
-        data, base_adr = read_dumptext(args.in_file)
+        data, base_adr = read_dumptext(args.in_file, args.auto_correct)
         size = len(data)
 
     # --out_file
