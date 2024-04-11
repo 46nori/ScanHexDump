@@ -104,6 +104,9 @@ def read_dumptext(file, isAutoCorrect):
                     sys.exit()
                 # トークンの中身が16進数かチェック
                 for x in range(1, x_bytes + 2):
+                    # 16進文字の自動修正を試みる
+                    if isAutoCorrect:
+                        token_list[x] = auto_correct(token_list[x])
                     if is_hexstr(token_list[x]) == False:
                         print("Block address : 0x{:X}".format(block_adr))
                         if x == x_bytes + 1:
